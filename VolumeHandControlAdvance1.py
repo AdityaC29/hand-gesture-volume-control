@@ -3,27 +3,32 @@ import numpy as np
 import mediapipe as mp
 import math
 import streamlit as st
-from ctypes import cast, POINTER
-from comtypes import CLSCTX_ALL, CoInitialize, CoUninitialize
-from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+import platform
 
 # Streamlit page config
 st.set_page_config(page_title="Hand Gesture Volume Control", layout="wide")
-
-# Initialize COM library for pycaw
-CoInitialize()
 
 # Initialize MediaPipe Hands
 mpHands = mp.solutions.hands
 hands = mpHands.Hands(min_detection_confidence=0.7, max_num_hands=1)
 mpDraw = mp.solutions.drawing_utils
 
-# Initialize audio control
-devices = AudioUtilities.GetSpeakers()
-interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-volume = cast(interface, POINTER(IAudioEndpointVolume))
-volRange = volume.GetVolumeRange()
-minVol, maxVol = volRange[0], volRange[1]
+# Windows-specific imports for volume control
+is_windows = platform.system() == "Windows"
+if is_windows:
+    from ctypes import cast, POINTER
+    from comtypes import CLSCTX_ALL, CoInitialize, CoUninitialize
+    from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+
+    # Initialize COM library for pycaw
+    CoInitialize()
+
+    # Initialize audio control
+    devices = AudioUtilities.GetSpeakers()
+    interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+    volume = cast(interface, POINTER(IAudioEndpointVolume))
+    volRange = volume.GetVolumeRange()
+    minVol, maxVol = volRange[0], volRange[1]
 
 # Streamlit sidebar info
 st.sidebar.title("Instructions")
@@ -82,11 +87,12 @@ if start:
                 length, img, lineInfo = find_distance(lmList, 4, 8, img)
                 volPer = np.interp(length, [50, 200], [0, 100])
 
-                # Set volume when pinky is down
-                fingersUp = [lmList[i][2] < lmList[i - 3][2] for i in [8, 12, 16, 20]]
-                if not fingersUp[3]:
-                    volume.SetMasterVolumeLevelScalar(volPer / 100, None)
-                    prevVolPer = volPer
+                # Set volume when pinky is down (Windows only)
+                if is_windows:
+                    fingersUp = [lmList[i][2] < lmList[i - 3][2] for i in [8, 12, 16, 20]]
+                    if not fingersUp[3]:
+                        volume.SetMasterVolumeLevelScalar(volPer / 100, None)
+                        prevVolPer = volPer
 
                 # Display volume percentage
                 cv2.putText(img, f'Volume: {int(volPer)}%', (50, 50), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 255, 0), 2)
@@ -102,5 +108,6 @@ if start:
     cv2.destroyAllWindows()
     st.success("Webcam stopped.")
 
-# Clean up COM library on exit
-CoUninitialize()
+# Clean up COM library on exit (Windows only)
+if is_windows:
+    CoUninitialize()
