@@ -3,6 +3,7 @@ import numpy as np
 import mediapipe as mp
 import math
 import streamlit as st
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode
 from ctypes import cast, POINTER
 from comtypes import CLSCTX_ALL, CoInitialize, CoUninitialize
 from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
@@ -49,25 +50,13 @@ def find_distance(lmList, p1, p2, img):
     length = math.hypot(x2 - x1, y2 - y1)
     return length, img, (x1, y1, x2, y2, cx, cy)
 
-# Start/Stop webcam buttons
-start = st.button("Start Webcam")
-stop = st.button("Stop")
+# Video processing class for streamlit-webrtc
+class HandGestureProcessor(VideoProcessorBase):
+    def __init__(self):
+        self.prevVolPer = -1
 
-# Placeholder for video frame
-frame_placeholder = st.empty()
-
-# Initialize webcam and volume tracking
-if start:
-    cap = cv2.VideoCapture(0)
-    prevVolPer = -1
-
-    while cap.isOpened():
-        success, img = cap.read()
-        if not success:
-            st.error("Failed to capture video.")
-            break
-
-        # Process the frame
+    def recv(self, frame):
+        img = frame.to_ndarray(format="bgr24")
         imgRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         results = hands.process(imgRGB)
         lmList = []
@@ -86,20 +75,20 @@ if start:
                 fingersUp = [lmList[i][2] < lmList[i - 3][2] for i in [8, 12, 16, 20]]
                 if not fingersUp[3]:
                     volume.SetMasterVolumeLevelScalar(volPer / 100, None)
-                    prevVolPer = volPer
+                    self.prevVolPer = volPer
 
                 # Display volume percentage
                 cv2.putText(img, f'Volume: {int(volPer)}%', (50, 50), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 255, 0), 2)
 
-        # Display the frame in Streamlit
-        frame_placeholder.image(img, channels="BGR")
+        return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-        # Stop the webcam if the Stop button is pressed
-        if stop:
-            break
-
-    cap.release()
-    st.success("Webcam stopped.")
+# Start the webcam with streamlit-webrtc
+webrtc_streamer(
+    key="hand-gesture-control",
+    mode=WebRtcMode.SENDRECV,
+    video_processor_factory=HandGestureProcessor,
+    media_stream_constraints={"video": True, "audio": False},
+)
 
 # Clean up COM library on exit
 CoUninitialize()
