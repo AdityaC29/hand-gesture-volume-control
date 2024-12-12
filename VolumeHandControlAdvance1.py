@@ -4,6 +4,7 @@ import mediapipe as mp
 import math
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode
+import av
 from ctypes import cast, POINTER
 from comtypes import CLSCTX_ALL, CoInitialize, CoUninitialize
 from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
@@ -19,12 +20,16 @@ mpHands = mp.solutions.hands
 hands = mpHands.Hands(min_detection_confidence=0.7, max_num_hands=1)
 mpDraw = mp.solutions.drawing_utils
 
-# Initialize audio control
-devices = AudioUtilities.GetSpeakers()
-interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-volume = cast(interface, POINTER(IAudioEndpointVolume))
-volRange = volume.GetVolumeRange()
-minVol, maxVol = volRange[0], volRange[1]
+# Initialize audio control with error handling
+try:
+    devices = AudioUtilities.GetSpeakers()
+    interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+    volume = cast(interface, POINTER(IAudioEndpointVolume))
+    volRange = volume.GetVolumeRange()
+    minVol, maxVol = volRange[0], volRange[1]
+except Exception as e:
+    st.error(f"Audio device error: {e}")
+    st.stop()
 
 # Streamlit sidebar info
 st.sidebar.title("Instructions")
